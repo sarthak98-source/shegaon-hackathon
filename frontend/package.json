@@ -9,15 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "agora-rtc-sdk-ng": "^4.24.3",
+    "axios": "^1.13.6",
+    "jwt-decode": "^4.0.0",
+    "lucide-react": "^0.316.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
-    "three": "^0.161.0",
-    "axios": "^1.6.7",
-    "jwt-decode": "^4.0.0",
     "socket.io-client": "^4.7.4",
-    "lucide-react": "^0.316.0",
-    "agora-rtc-sdk-ng": "^4.20.0"
+    "three": "^0.161.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

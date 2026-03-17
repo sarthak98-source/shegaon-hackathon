@@ -1,19 +1,38 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, Video, ShoppingCart, ArrowRight, Star, Package } from 'lucide-react'
+import { Sparkles, Video, ArrowRight, Package } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { getFeatured, categories, products } from '../../data/products'
 import ProductCard from '../../components/ui/ProductCard'
+import api from '../../api'
 
 export default function BuyerHome() {
   const { user } = useAuth()
-  const featured = getFeatured()
+  const [featured, setFeatured] = useState([])
+  const [loading,  setLoading]  = useState(true)
+
+  useEffect(() => {
+    api.get('/products?featured=1&limit=8')
+      .then(({ data }) => setFeatured(data.products || []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
 
   const quickLinks = [
-    { to:'/buyer/products', icon:Package,  label:'Browse All',     color:'bg-brand-50 text-brand-600', border:'border-brand-200' },
-    { to:'/buyer/ar/3',     icon:Sparkles, label:'AR Try-On',      color:'bg-purple-50 text-purple-600', border:'border-purple-200' },
-    { to:'/buyer/live',     icon:Video,    label:'Live Sessions',  color:'bg-red-50 text-red-600', border:'border-red-200' },
-    { to:'/buyer/orders',   icon:Package,  label:'My Orders',      color:'bg-green-50 text-green-600', border:'border-green-200' },
+    { to:'/buyer/products', icon:Package,  label:'Browse All',    border:'border-brand-200',  color:'bg-brand-50 text-brand-600'   },
+    { to:'/buyer/ar/1',     icon:Sparkles, label:'AR Try-On',     border:'border-purple-200', color:'bg-purple-50 text-purple-600' },
+    { to:'/buyer/live',     icon:Video,    label:'Live Sessions', border:'border-red-200',    color:'bg-red-50 text-red-600'       },
+    { to:'/buyer/orders',   icon:Package,  label:'My Orders',     border:'border-green-200',  color:'bg-green-50 text-green-600'   },
+  ]
+
+  const categories = [
+    { id:'clothing',    icon:'👗', label:'Clothing'    },
+    { id:'jewelry',     icon:'💍', label:'Jewelry'     },
+    { id:'glasses',     icon:'🕶️', label:'Glasses'     },
+    { id:'shoes',       icon:'👟', label:'Shoes'       },
+    { id:'furniture',   icon:'🛋️', label:'Furniture'   },
+    { id:'electronics', icon:'📱', label:'Electronics' },
+    { id:'home-decor',  icon:'🏮', label:'Home Decor'  },
+    { id:'hats',        icon:'🎩', label:'Hats'        },
   ]
 
   return (
@@ -37,9 +56,7 @@ export default function BuyerHome() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {quickLinks.map(l => (
           <Link key={l.to} to={l.to} className={`card p-4 flex flex-col gap-2 hover:shadow-md transition-all border ${l.border} hover:-translate-y-0.5`}>
-            <div className={`w-9 h-9 rounded-xl ${l.color} flex items-center justify-center`}>
-              <l.icon size={18}/>
-            </div>
+            <div className={`w-9 h-9 rounded-xl ${l.color} flex items-center justify-center`}><l.icon size={18}/></div>
             <span className="text-sm font-semibold text-gray-700">{l.label}</span>
           </Link>
         ))}
@@ -83,9 +100,15 @@ export default function BuyerHome() {
           <h2 className="font-display text-lg font-bold text-gray-900">Featured Products</h2>
           <Link to="/buyer/products" className="text-brand-600 text-sm font-medium hover:text-brand-700 inline-flex items-center gap-1">View all <ArrowRight size={14}/></Link>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {featured.map(p => <ProductCard key={p.id} product={p}/>)}
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {[...Array(8)].map((_,i) => <div key={i} className="card h-60 animate-pulse bg-gray-100"/>)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {featured.map(p => <ProductCard key={p.id} product={p}/>)}
+          </div>
+        )}
       </div>
     </div>
   )

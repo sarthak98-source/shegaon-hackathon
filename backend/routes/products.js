@@ -9,26 +9,36 @@ const router = express.Router()
 router.get('/', async (req, res) => {
   try {
     const pool = getPool()
-    const { category, search, arMode, featured, sellerId, limit = 50, offset = 0 } = req.query
+    const {
+      category, search, arMode, featured, sellerId,
+      limit = 50, offset = 0
+    } = req.query
+
+    // ── FIX: use pool.query (not execute) for dynamic SQL ──
+    // mysql2 prepared statements (execute) fail with LIMIT/OFFSET
+    // on dynamically built queries. pool.query works correctly.
 
     let sql    = 'SELECT p.*, u.name AS seller_name FROM products p LEFT JOIN users u ON p.seller_id = u.id WHERE p.active = 1'
     const params = []
 
-    if (category)  { sql += ' AND p.category = ?';           params.push(category) }
-    if (arMode)    { sql += ' AND p.ar_mode = ?';            params.push(arMode) }
-    if (featured)  { sql += ' AND p.featured = 1' }
-    if (sellerId)  { sql += ' AND p.seller_id = ?';          params.push(parseInt(sellerId)) }
+    if (category) { sql += ' AND p.category = ?';  params.push(category) }
+    if (arMode)   { sql += ' AND p.ar_mode = ?';   params.push(arMode)   }
+    if (featured) { sql += ' AND p.featured = 1'                          }
+    if (sellerId) { sql += ' AND p.seller_id = ?'; params.push(parseInt(sellerId)) }
     if (search) {
       sql += ' AND (p.name LIKE ? OR p.description LIKE ? OR p.category LIKE ?)'
       const q = `%${search}%`
       params.push(q, q, q)
     }
 
-    sql += ' ORDER BY p.featured DESC, p.created_at DESC LIMIT ? OFFSET ?'
-    params.push(parseInt(limit), parseInt(offset))
+    // Inline LIMIT/OFFSET directly into SQL to avoid prepared statement issues
+    const limitNum  = Math.max(1,  parseInt(limit)  || 50)
+    const offsetNum = Math.max(0,  parseInt(offset) || 0)
+    sql += ` ORDER BY p.featured DESC, p.created_at DESC LIMIT ${limitNum} OFFSET ${offsetNum}`
 
-    const [rows] = await pool.execute(sql, params)
-    const [countRow] = await pool.execute('SELECT COUNT(*) AS total FROM products WHERE active = 1', [])
+    // Use pool.query instead of pool.execute
+    const [rows]     = await pool.query(sql, params)
+    const [countRow] = await pool.query('SELECT COUNT(*) AS total FROM products WHERE active = 1')
 
     return res.json({ success: true, products: rows, total: countRow[0].total })
   } catch (err) {
@@ -41,7 +51,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const pool = getPool()
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
       'SELECT p.*, u.name AS seller_name, u.email AS seller_email FROM products p LEFT JOIN users u ON p.seller_id = u.id WHERE p.id = ? AND p.active = 1',
       [req.params.id]
     )
@@ -56,7 +66,7 @@ router.get('/:id', async (req, res) => {
 router.get('/:id/model', async (req, res) => {
   try {
     const pool = getPool()
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
       'SELECT id, name, category, ar_mode, model_url, colors, sizes FROM products WHERE id = ? AND active = 1',
       [req.params.id]
     )
@@ -80,10 +90,15 @@ router.post('/', authenticate, authorize('seller', 'admin'), [
 
   try {
     const pool = getPool()
-    const [result] = await pool.execute(
+    const [result] = await pool.query(
       `INSERT INTO products (name, category, ar_mode, price, original_price, description, image_url, model_url, badge, colors, sizes, featured, seller_id, active)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [name, category, ar_mode || '3d', price, original_price || null, description || '', image_url || '', model_url || '', badge || '', JSON.stringify(colors || []), JSON.stringify(sizes || []), featured ? 1 : 0, req.user.id]
+      [
+        name, category, ar_mode || '3d', price, original_price || null,
+        description || '', image_url || '', model_url || '', badge || '',
+        JSON.stringify(colors || []), JSON.stringify(sizes || []),
+        featured ? 1 : 0, req.user.id
+      ]
     )
     return res.status(201).json({ success: true, productId: result.insertId, message: 'Product created successfully' })
   } catch (err) {
@@ -96,16 +111,15 @@ router.post('/', authenticate, authorize('seller', 'admin'), [
 router.put('/:id', authenticate, authorize('seller', 'admin'), async (req, res) => {
   try {
     const pool = getPool()
-    const [rows] = await pool.execute('SELECT seller_id FROM products WHERE id = ?', [req.params.id])
+    const [rows] = await pool.query('SELECT seller_id FROM products WHERE id = ?', [req.params.id])
     if (!rows.length) return res.status(404).json({ success: false, message: 'Product not found' })
 
-    // Seller can only edit their own products; admin can edit any
     if (req.user.role === 'seller' && rows[0].seller_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'You can only edit your own products' })
     }
 
     const { name, price, description, image_url, featured, active } = req.body
-    await pool.execute(
+    await pool.query(
       'UPDATE products SET name = ?, price = ?, description = ?, image_url = ?, featured = ?, active = ?, updated_at = NOW() WHERE id = ?',
       [name, price, description, image_url, featured ? 1 : 0, active !== false ? 1 : 0, req.params.id]
     )
@@ -119,7 +133,7 @@ router.put('/:id', authenticate, authorize('seller', 'admin'), async (req, res) 
 router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
     const pool = getPool()
-    await pool.execute('UPDATE products SET active = 0 WHERE id = ?', [req.params.id])
+    await pool.query('UPDATE products SET active = 0 WHERE id = ?', [req.params.id])
     return res.json({ success: true, message: 'Product removed' })
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to delete product' })

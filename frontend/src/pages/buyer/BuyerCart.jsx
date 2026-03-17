@@ -1,15 +1,17 @@
 // ─── BuyerCart ────────────────────────────────────────────────────
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Sparkles, Tag, Check } from 'lucide-react'
 import { useCart } from '../../context/CartContext'
+import { useAuth } from '../../context/AuthContext'
+import api from '../../api'
 
 export function BuyerCart() {
   const { items, removeItem, updateQty, total, count, clearCart } = useCart()
   const navigate = useNavigate()
   const shipping = total > 999 ? 0 : 99
-  const tax = Math.round(total * 0.18)
-  const grand = total + shipping + tax
+  const tax      = Math.round(total * 0.18)
+  const grand    = total + shipping + tax
 
   if (!items.length) return (
     <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -32,7 +34,7 @@ export function BuyerCart() {
           {items.map(item => (
             <div key={item._key||item.id} className="card p-4 flex gap-4">
               <Link to={`/buyer/products/${item.id}`}>
-                <img src={item.image} alt={item.name} className="w-20 h-20 rounded-xl object-cover flex-shrink-0"/>
+                <img src={item.image_url || item.image} alt={item.name} className="w-20 h-20 rounded-xl object-cover flex-shrink-0"/>
               </Link>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-400 capitalize mb-0.5">{item.category}</p>
@@ -88,31 +90,60 @@ export function BuyerCart() {
   )
 }
 
-// ─── BuyerCheckout ───────────────────────────────────────────────
+// ─── BuyerCheckout ────────────────────────────────────────────────
 export function BuyerCheckout() {
   const { items, total, clearCart } = useCart()
-  const navigate = useNavigate()
-  const [step, setStep]       = useState(0)
-  const [placing, setPlacing] = useState(false)
-  const [placed, setPlaced]   = useState(false)
-  const [payMethod, setPay]   = useState('upi')
-  const [address, setAddress] = useState({ fullName:'', phone:'', line1:'', city:'', state:'', pincode:'' })
+  const { user } = useAuth()
+  const navigate  = useNavigate()
+  const [step,     setStep]    = useState(0)
+  const [placing,  setPlacing] = useState(false)
+  const [placed,   setPlaced]  = useState(false)
+  const [orderId,  setOrderId] = useState(null)
+  const [error,    setError]   = useState('')
+  const [payMethod, setPay]    = useState('upi')
+  const [address, setAddress]  = useState({ fullName:'', phone:'', line1:'', city:'', state:'', pincode:'' })
 
   const shipping = total > 999 ? 0 : 99
-  const tax = Math.round(total * 0.18)
-  const grand = total + shipping + tax
+  const tax      = Math.round(total * 0.18)
+  const grand    = total + shipping + tax
 
   const placeOrder = async () => {
     setPlacing(true)
-    await new Promise(r => setTimeout(r, 2000))
-    setPlacing(false); setPlaced(true); clearCart()
+    setError('')
+    try {
+      const { data } = await api.post('/orders', {
+        items: items.map(i => ({
+          id:       i.id,
+          name:     i.name,
+          price:    i.price,
+          qty:      i.qty,
+          sellerId: i.seller_id || i.sellerId,
+          image:    i.image_url || i.image,
+        })),
+        address,
+        paymentMethod: payMethod,
+        subtotal: total,
+        shipping,
+        tax,
+        total: grand,
+      })
+      if (data.success) {
+        setOrderId(data.orderId)
+        setPlaced(true)
+        clearCart()
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to place order. Please try again.')
+    } finally {
+      setPlacing(false)
+    }
   }
 
   if (placed) return (
     <div className="flex flex-col items-center justify-center py-20 gap-4">
       <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center"><Check size={32} className="text-green-600"/></div>
       <h1 className="font-display text-2xl font-bold text-gray-900">Order Placed! 🎉</h1>
-      <p className="text-gray-500 text-sm">Order #{Date.now().toString().slice(-8)}</p>
+      <p className="text-gray-500 text-sm">Order #{orderId}</p>
       <div className="flex gap-3 mt-2">
         <Link to="/buyer/orders" className="btn-primary">View Orders</Link>
         <Link to="/buyer/products" className="btn-secondary">Continue Shopping</Link>
@@ -178,9 +209,10 @@ export function BuyerCheckout() {
           {step===2 && (
             <div className="card p-6 space-y-4">
               <h3 className="font-semibold text-gray-800">Review Order</h3>
+              {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">{error}</div>}
               {items.map(item=>(
                 <div key={item.id} className="flex gap-3 items-center">
-                  <img src={item.image} alt="" className="w-12 h-12 rounded-xl object-cover"/>
+                  <img src={item.image_url||item.image} alt="" className="w-12 h-12 rounded-xl object-cover"/>
                   <div className="flex-1"><p className="text-sm font-medium text-gray-800">{item.name}</p><p className="text-xs text-gray-500">×{item.qty}</p></div>
                   <p className="font-semibold text-sm">₹{(item.price*item.qty).toLocaleString('en-IN')}</p>
                 </div>
@@ -203,7 +235,7 @@ export function BuyerCheckout() {
           <p className="font-semibold text-sm text-gray-700 mb-3">Order ({items.length})</p>
           {items.slice(0,3).map(item=>(
             <div key={item.id} className="flex gap-2 mb-2">
-              <img src={item.image} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0"/>
+              <img src={item.image_url||item.image} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0"/>
               <div className="flex-1 min-w-0"><p className="text-xs truncate text-gray-700">{item.name}</p><p className="text-xs text-gray-400">×{item.qty}</p></div>
               <p className="text-xs font-semibold text-gray-700 flex-shrink-0">₹{(item.price*item.qty).toLocaleString('en-IN')}</p>
             </div>
@@ -217,46 +249,71 @@ export function BuyerCheckout() {
   )
 }
 
-// ─── BuyerOrders ─────────────────────────────────────────────────
+// ─── BuyerOrders ──────────────────────────────────────────────────
 export function BuyerOrders() {
-  const demoOrders = [
-    { id:'ORD-001', date:'Mar 10, 2025', status:'Delivered', items:[{name:'Luxe Silk Blazer',price:12999,image:'https://images.unsplash.com/photo-1594938298603-c8148c4b4571?w=100'}], total:14999 },
-    { id:'ORD-002', date:'Mar 14, 2025', status:'Shipped',   items:[{name:'Aviator Pro Sunglasses',price:5999,image:'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=100'}], total:6099 },
-  ]
-  const statusColors = { Delivered:'badge-green', Shipped:'badge-blue', Processing:'badge-orange', Cancelled:'badge-red' }
+  const [orders,  setOrders]  = useState([])
+  const [loading, setLoading] = useState(true)
+  const statusColors = { delivered:'badge-green', shipped:'badge-blue', confirmed:'badge-orange', pending:'badge-orange', cancelled:'badge-red' }
+
+  useEffect(() => {
+    api.get('/orders')
+      .then(({ data }) => setOrders(data.orders || []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  const formatDate = (d) => new Date(d).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
+
+  if (loading) return (
+    <div className="max-w-4xl space-y-4">
+      <h1 className="page-title">My Orders</h1>
+      {[...Array(3)].map((_,i) => <div key={i} className="card h-28 animate-pulse bg-gray-100"/>)}
+    </div>
+  )
 
   return (
     <div className="max-w-4xl space-y-6">
       <h1 className="page-title">My Orders</h1>
-      {demoOrders.length===0 ? (
-        <div className="card p-16 text-center"><p className="text-gray-500">No orders yet.</p><Link to="/buyer/products" className="btn-primary mt-4">Start Shopping</Link></div>
+      {orders.length === 0 ? (
+        <div className="card p-16 text-center">
+          <p className="text-gray-500">No orders yet.</p>
+          <Link to="/buyer/products" className="btn-primary mt-4">Start Shopping</Link>
+        </div>
       ) : (
         <div className="space-y-4">
-          {demoOrders.map(order => (
-            <div key={order.id} className="card p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div><p className="font-semibold text-gray-900">{order.id}</p><p className="text-xs text-gray-500 mt-0.5">{order.date}</p></div>
-                <span className={statusColors[order.status]||'badge-gray'}>{order.status}</span>
-              </div>
-              <div className="flex gap-3">
-                {order.items.map((item,i) => (
-                  <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-xl p-2">
-                    <img src={item.image} alt="" className="w-10 h-10 rounded-lg object-cover"/>
-                    <div><p className="text-xs font-medium text-gray-700">{item.name}</p><p className="text-xs text-brand-600 font-bold">₹{item.price.toLocaleString('en-IN')}</p></div>
+          {orders.map(order => {
+            const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+            return (
+              <div key={order.id} className="card p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="font-semibold text-gray-900">ORD-{order.id}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{formatDate(order.created_at)}</p>
                   </div>
-                ))}
+                  <span className={statusColors[order.status] || 'badge-gray'}>{order.status}</span>
+                </div>
+                <div className="flex gap-3 flex-wrap">
+                  {items.map((item, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-xl p-2">
+                      {item.image && <img src={item.image} alt="" className="w-10 h-10 rounded-lg object-cover"/>}
+                      <div>
+                        <p className="text-xs font-medium text-gray-700">{item.name}</p>
+                        <p className="text-xs text-brand-600 font-bold">₹{item.price?.toLocaleString('en-IN')}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                  <span className="text-sm font-bold text-gray-800">Total: ₹{Number(order.total).toLocaleString('en-IN')}</span>
+                  <span className="badge-gray text-xs">{order.payment_method?.toUpperCase()}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-                <span className="text-sm font-bold text-gray-800">Total: ₹{order.total.toLocaleString('en-IN')}</span>
-                <button className="btn-secondary text-xs py-1.5 px-3">Track Order</button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-// Default exports for router compatibility
 export default BuyerCart
