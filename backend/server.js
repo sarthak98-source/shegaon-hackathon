@@ -11,8 +11,24 @@ const orderRoutes    = require('./routes/orders')
 const userRoutes     = require('./routes/users')
 const liveRoutes     = require('./routes/live')
 
+// Database
+const { getPool } = require('./config/db')
+
 const app    = express()
 const server = http.createServer(app)
+
+/* ─────────────────────────────────────────────────────────────
+   Test DB Connection on Startup
+───────────────────────────────────────────────────────────── */
+getPool().getConnection()
+  .then(conn => {
+    console.log('✅ MySQL connected successfully')
+    conn.release()
+  })
+  .catch(err => {
+    console.error('❌ MySQL connection failed:', err.message)
+    process.exit(1)
+  })
 
 /* ─────────────────────────────────────────────────────────────
    Socket.io — real-time chat for live sessions
